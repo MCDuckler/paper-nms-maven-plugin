@@ -9,13 +9,13 @@ import org.apache.maven.artifact.resolver.ArtifactResolutionException;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
+import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.project.MavenProjectHelper;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.PrintStream;
-import java.io.UncheckedIOException;
+import java.io.*;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,6 +25,14 @@ import java.util.List;
 @Mojo(name = "remap", defaultPhase = LifecyclePhase.PACKAGE)
 public class RemapMojo extends MojoBase {
     private RemappedClasses remappedClasses;
+    @Component
+    MavenProjectHelper projectHelper;
+
+    @Parameter( defaultValue = "remapped" )
+    String remappedClassifierName;
+
+    @Parameter( defaultValue = "true" )
+    boolean attachRemappedArtifact;
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
@@ -63,12 +71,12 @@ public class RemapMojo extends MojoBase {
             Dependency dependency = (Dependency) object;
 
             Artifact artifact = this.artifactFactory.createArtifactWithClassifier(dependency.getGroupId(), dependency.getArtifactId(),
-                dependency.getVersion(), dependency.getType(), dependency.getClassifier());
+                    dependency.getVersion(), dependency.getType(), dependency.getClassifier());
 
             try {
                 this.artifactResolver.resolve(artifact, this.remoteRepositories, this.localRepository);
             } catch (ArtifactResolutionException | ArtifactNotFoundException e) {
-                getLog().error("Failed to resolve "+ artifact.getGroupId() + ":" + artifact.getArtifactId(), e);
+                getLog().error("Failed to resolve " + artifact.getGroupId() + ":" + artifact.getArtifactId(), e);
                 continue;
             }
 
@@ -176,9 +184,9 @@ public class RemapMojo extends MojoBase {
 
         // Create the remapper
         TinyRemapper remapper = TinyRemapper.newRemapper()
-            .withMappings(mappings)
-            .ignoreConflicts(true)
-            .build();
+                .withMappings(mappings)
+                .ignoreConflicts(true)
+                .build();
 
         // Add the class path
         remapper.readClassPath(classPath.toArray(new Path[0]));
@@ -215,14 +223,24 @@ public class RemapMojo extends MojoBase {
         } catch (IOException | URISyntaxException e) {
             throw new MojoExecutionException("Failed to remap artifact", e);
         }
-
-        getLog().info("Replacing artifact.");
         try {
-            Files.delete(artifactPath);
-            Files.move(outputPath, artifactPath);
-        } catch (IOException e) {
-            throw new MojoExecutionException("Failed to replace artifact with the remapped artifact.", e);
+            if (attachRemappedArtifact) {
+                //Forked because I wanted to be able to keep the original jar
+                getLog().info("Attaching remapped artifact.");
+                Path destinationPath = Path.of(artifactPath.getParent().toString(), artifactPath.getFileName().toString().replace(".jar", "-" + remappedClassifierName + ".jar"));
+                Files.move(outputPath, destinationPath);
+                projectHelper.attachArtifact(project, project.getArtifact().getType(), remappedClassifierName,
+                        new File(destinationPath.toUri()));
+            } else {
+                getLog().info("Replacing remapped artifact.");
+                Files.delete(artifactPath);
+                Files.move(outputPath, artifactPath);
+            }
+        } catch (IOException exception) {
+            throw new MojoExecutionException("Failed to replace/attach artifact with the remapped artifact.");
         }
+
+
     }
 
     public void remapDouble(Path artifactPath, Path mappingsMojangPath, Path mappingsSpigotPath, List<Path> classPath) throws MojoExecutionException {
