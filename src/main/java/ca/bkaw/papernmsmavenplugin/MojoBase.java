@@ -132,7 +132,8 @@ public abstract class MojoBase extends AbstractMojo {
      * @throws MojoFailureException If no version is found.
      */
     public String getGameVersion() throws MojoFailureException {
-        for (Object object : this.project.getDependencies()) {
+        return "1.20.4";
+    /*    for (Object object : this.project.getDependencies()) {
             Dependency dependency = (Dependency) object;
 
             if (this.getNmsGroupId().equals(dependency.getGroupId()) && this.devBundle.id.equals(dependency.getArtifactId())) {
@@ -150,7 +151,7 @@ public abstract class MojoBase extends AbstractMojo {
             "\n    <scope>provided</scope>" +
             "\n</dependency>" +
             "\n" +
-            "\n Replacing \"1.20.2\" with the desired version.");
+            "\n Replacing \"1.20.2\" with the desired version.");*/
     }
 
     // Utils
